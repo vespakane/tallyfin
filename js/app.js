@@ -98,13 +98,16 @@
 
   /* ------------------------------------------------------------------ */
   /* Storage.
-     days[ymd] = { sales, orders, balance, fbAvg, fbNeg, fbPos, fbNeu, src: "entered" | "sim", ev }
-     periods   = totals entered for the windows ending on periods.asOf     */
+     days[ymd] = { sales, orders, src: "entered" | "sim", ev }
+     periods   = totals entered for the windows ending on periods.asOf
+     auto      = whether the balance / the feedback card is simulated; manual holds the figures shown when it is not */
   const DEFAULTS = {
     days: {},
     periods: { d7: null, d30: null, month: null, year: null, lastYear: null, asOf: null },
     ordersCard: { pending: null, undispatched: null, dispatched: null },
     misc: { messages: null, ipi: null, deal: null, voucher: null },
+    auto: { balance: true, feedback: true },
+    manual: { balance: null, fbAvg: null, fbNeg: null, fbPos: null, fbNeu: null },
     sim: false,
     simSince: null
   };
@@ -118,7 +121,9 @@
           days: s.days || {},
           periods: Object.assign({}, DEFAULTS.periods, s.periods),
           ordersCard: Object.assign({}, DEFAULTS.ordersCard, s.ordersCard),
-          misc: Object.assign({}, DEFAULTS.misc, s.misc)
+          misc: Object.assign({}, DEFAULTS.misc, s.misc),
+          auto: Object.assign({}, DEFAULTS.auto, s.auto),
+          manual: s.manual ? Object.assign({}, DEFAULTS.manual, s.manual) : null
         });
       }
       // migrate the first version (single "today" record)
@@ -133,6 +138,7 @@
         if (o.periods) st.periods = Object.assign(st.periods, o.periods, { asOf: day });
         if (o.ordersCard) st.ordersCard = Object.assign(st.ordersCard, o.ordersCard);
         if (o.misc) st.misc = Object.assign(st.misc, o.misc);
+        st.manual = null;
         return st;
       }
     } catch (e) {}
@@ -152,6 +158,10 @@
       if (!best || k > best.date) best = { date: k, value: d[field] };
     }
     return best;
+  }
+  if (!state.manual) {   // balance and feedback used to be stored per day: keep the latest of each as the manual figure
+    state.manual = {};
+    for (const f of Object.keys(DEFAULTS.manual)) { const e = latestEntered(f); state.manual[f] = e ? e.value : null; }
   }
 
   /* ------------------------------------------------------------------ */
@@ -383,38 +393,41 @@
       } else spread(todaySoFar, 0, nowH);
     }
 
-    // ---- 5. Balance: last entered balance, then net sales accrue with a fortnightly disbursement ----
-    let balance = 0;
-    const lb = latestEntered("balance");
-    if (lb) {
-      balance = lb.value;
-      const b0 = idx(lb.date);
-      if (comp[b0]) balance += (sales[b0] - comp[b0].entered) * 0.72;   // sales since the entry on that day
-      for (let i = b0 + 1; i <= last; i++) {
-        balance += sales[i] * 0.72;
-        if ((i - b0) % 14 === 0) balance = Math.round(balance * 0.18 * 100) / 100;   // payout
-      }
-      balance = Math.round(balance * 100) / 100;
+    // ---- 5. Balance: net sales are held until delivery + 7 days; whatever has unlocked is paid out daily ----
+    let simBalance = 0;
+    for (let age = 0; age <= 9; age++) {
+      const i = last - age, r = rng("bal:" + ymd(dates[i]));
+      const net = sales[i] * between(r, 0.7, 0.74);                    // after Amazon's fees
+      const d1 = between(r, 0.3, 0.5), d3 = between(r, 0.1, 0.25);     // share delivered after one day / after three
+      simBalance += net * (age <= 7 ? 1 : age === 8 ? 1 - d1 : d3);
     }
+    simBalance = Math.round(simBalance * 100) / 100;
 
-    // ---- 6. Feedback: entered baseline plus simulated arrivals since ----
-    const fb = { avg: 5, neg: 0, pos: 0, neu: 0 };
-    for (const f of ["fbAvg", "fbNeg", "fbPos", "fbNeu"]) {
-      const e = latestEntered(f);
-      const k = { fbAvg: "avg", fbNeg: "neg", fbPos: "pos", fbNeu: "neu" }[f];
-      if (e) {
-        fb[k] = e.value;
-        if (k !== "avg") {
-          const f0 = idx(e.date);
-          for (let i = f0 + 1; i <= last; i++) {
-            const r = rng("fb:" + k + ":" + ymd(dates[i]));
-            fb[k] += poisson(r, orders[i] / (k === "pos" ? 70 : k === "neg" ? 900 : 500));
-          }
-        }
+    // ---- 6. Feedback: a drifting share of orders (about 0.75%) leaves feedback, counted over the last 30 days ----
+    const simFb = { avg: 0, neg: 0, pos: 0, neu: 0 };
+    let stars = 0, count = 0;
+    for (let i = last - 29; i <= last; i++) {
+      const r = rng("fb:" + ymd(dates[i]));
+      const level = between(rng("fbweek:" + ymd(addDays(dates[i], -isoDow(dates[i])))), 0.006, 0.009);   // drifts week to week
+      const rate = Math.min(Math.max(level * lognormal(r, 0.2), 0.005), 0.01);
+      const negP = between(r, 0.02, 0.05), neuP = between(r, 0.015, 0.035);
+      let arrivals = poisson(r, orders[i - 4] * rate);   // feedback follows delivery, a few days after the order
+      if (i === last) arrivals = Math.floor(arrivals * frac);
+      for (let j = 0; j < arrivals; j++) {
+        const u = r(), v = r();
+        if (u < negP) { simFb.neg++; stars += v < 0.65 ? 1 : 2; }
+        else if (u < negP + neuP) { simFb.neu++; stars += 3; }
+        else { simFb.pos++; stars += v < 0.9 ? 5 : 4; }
+        count++;
       }
     }
+    simFb.avg = count ? Math.round(stars / count * 10) / 10 : 0;
 
-    return { now, today, dates, sales, orders, units, hourly, last, dom, doy, y, frac, fracPrev, todayIsEntered, balance, fb, eventsToday, anchorKey };
+    const man = state.manual, mv = (k) => num(man[k]) || 0;
+    const balance = state.auto.balance ? simBalance : mv("balance");
+    const fb = state.auto.feedback ? simFb : { avg: mv("fbAvg"), neg: mv("fbNeg"), pos: mv("fbPos"), neu: mv("fbNeu") };
+
+    return { now, today, dates, sales, orders, units, hourly, last, dom, doy, y, frac, fracPrev, todayIsEntered, balance, fb, sim: { balance: simBalance, fb: simFb }, eventsToday, anchorKey };
   }
 
   function sum(arr, a, b) { let s = 0; for (let i = Math.max(a, 0); i <= Math.min(b, arr.length - 1); i++) s += arr[i]; return s; }
@@ -680,8 +693,9 @@
     dayInput.value = dayKey || today;
     const d = state.days[dayInput.value] || {};
     const val = (v) => (v == null ? "" : v);
-    f.sales.value = val(d.sales); f.orders.value = val(d.orders); f.balance.value = val(d.balance);
-    f.fbAvg.value = val(d.fbAvg); f.fbNeg.value = val(d.fbNeg); f.fbPos.value = val(d.fbPos); f.fbNeu.value = val(d.fbNeu);
+    f.sales.value = val(d.sales); f.orders.value = val(d.orders);
+    formAuto = Object.assign({}, state.auto);
+    showMode("balance"); showMode("feedback");
     const isToday = dayInput.value === today;
     $("#day-title").textContent = isToday ? "Today so far" : "Figures for " + niceDate(dayInput.value) + (d.src === "entered" ? " (entered)" : "");
     // what the dashboard currently shows for the chosen day
@@ -704,6 +718,25 @@
     $("#history").textContent = list.length ? "Entered days: " + list.map(niceDate).join(", ") : "";
     checkConsistency();
   }
+  /* Balance and feedback are each either simulated (inputs locked, showing the simulated figures) or manual
+     (shown exactly as typed). The switches take effect on Save, like the rest of the sheet.                */
+  const MODE_FIELDS = { balance: ["balance"], feedback: ["fbAvg", "fbNeg", "fbPos", "fbNeu"] };
+  let formAuto = Object.assign({}, state.auto);
+  function showMode(kind) {
+    const on = formAuto[kind], sim = model ? model.sim : null;
+    const simVal = { balance: sim ? sim.balance.toFixed(2) : "", fbAvg: sim ? sim.fb.avg : "", fbNeg: sim ? sim.fb.neg : "", fbPos: sim ? sim.fb.pos : "", fbNeu: sim ? sim.fb.neu : "" };
+    for (const k of MODE_FIELDS[kind]) {
+      const input = form.elements[k];
+      input.disabled = on;
+      input.value = on || state.manual[k] == null ? simVal[k] : state.manual[k];   // manual starts from the simulated figure
+    }
+    $("#" + kind + "-switch").classList.toggle("on", on);
+    $("#" + kind + "-mode").textContent = on ? "Simulated" : "Manual";
+    $("#" + kind + "-hint").textContent = !on ? "Shown exactly as typed until you change it."
+      : kind === "balance" ? "Follows your sales: money after fees is held until delivery + 7 days, then paid out daily."
+      : "Follows your orders: about 0.75% leave feedback, counted over the last 30 days.";
+  }
+  for (const kind of Object.keys(MODE_FIELDS)) $("#" + kind + "-switch").addEventListener("click", () => { formAuto[kind] = !formAuto[kind]; showMode(kind); });
   function renderDayChips(sel) {
     const box = $("#day-chips"), t = startOfDay(new Date());
     box.textContent = "";
@@ -720,7 +753,7 @@
   function readForm() {
     const f = form.elements, g = (n) => num(f[n].value);
     const day = dayInput.value || ymd(new Date());
-    const rec = { sales: g("sales"), orders: g("orders"), balance: g("balance"), fbAvg: g("fbAvg"), fbNeg: g("fbNeg"), fbPos: g("fbPos"), fbNeu: g("fbNeu") };
+    const rec = { sales: g("sales"), orders: g("orders") };
     const prev = state.days[day];
     // an entry made today is the total by now; keep the original time if the sales figure is unchanged
     const at = prev && prev.src === "entered" && prev.sales === rec.sales && prev.at ? prev.at : day === ymd(new Date()) && rec.sales != null ? Date.now() : null;
@@ -731,6 +764,8 @@
     if (changedPeriods) { state.periods = Object.assign(np, { asOf: day }); }
     state.ordersCard = { pending: g("pending"), undispatched: g("undispatched"), dispatched: g("dispatched") };
     state.misc = { messages: g("messages"), ipi: g("ipi"), deal: g("deal"), voucher: g("voucher") };
+    state.auto = Object.assign({}, formAuto);
+    for (const kind of Object.keys(MODE_FIELDS)) if (!formAuto[kind]) for (const k of MODE_FIELDS[kind]) state.manual[k] = g(k);
     // days after an overwritten day are re-simulated from the new trend
     for (const k of Object.keys(state.days)) if (k > day && state.days[k].src === "sim") delete state.days[k];
   }
@@ -785,12 +820,12 @@
   if (q.has("demo")) {   // sample figures for previewing; not saved
     state = JSON.parse(JSON.stringify(DEFAULTS));
     const t = ymd(new Date());
-    state.days[t] = { sales: 3643.63, orders: 231, balance: 8590.57, fbAvg: 5, fbNeg: 0, fbPos: 1, fbNeu: 0, src: "entered" };
+    state.days[t] = { sales: 3643.63, orders: 231, src: "entered" };
     state.periods = { d7: 17481.72, d30: 24328.91, month: 21495.62, year: 84472.41, lastYear: null, asOf: t };
     if (q.get("demo") === "sim") {   // as if entered N days ago and simulated since
       const a = ymd(addDays(new Date(), -parseInt(q.get("ago") || "20", 10)));
       state.sim = true; state.periods.asOf = a; state.days = {};
-      state.days[a] = { sales: 3643.63, orders: 231, balance: 8590.57, fbAvg: 5, fbNeg: 0, fbPos: 1, fbNeu: 0, src: "entered" };
+      state.days[a] = { sales: 3643.63, orders: 231, src: "entered" };
     }
     save = function () {};
   }

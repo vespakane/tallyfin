@@ -170,7 +170,7 @@ try { if (!sessionStorage.getItem("launched") && !/[?&]splash=0/.test(location.s
   <div class="sheet" id="setup">
     <div class="grabber"></div>
     <h3>Enter your figures</h3>
-    <p class="sheet-sub">Each day you enter is kept. Pick a day to see or change its figures; days you leave blank are simulated. Blank periods are estimated from what you did enter.</p>
+    <p class="sheet-sub">Each day you enter is kept. Pick a day to see or change its figures; days you leave blank are simulated. Blank periods are estimated from what you did enter. The balance and feedback are simulated from your sales unless you switch them to manual.</p>
     <form id="setup-form" autocomplete="off">
       <div class="group">
         <div class="day-chips" id="day-chips"></div>
@@ -182,16 +182,21 @@ try { if (!sessionStorage.getItem("launched") && !/[?&]splash=0/.test(location.s
         <div class="hint hint-plain" id="day-shown"></div>
         <label><span>Total sales (£)</span><input name="sales" inputmode="decimal" placeholder="0.00"></label>
         <label><span>Order items</span><input name="orders" inputmode="numeric" placeholder="0"></label>
-        <label><span>Total balance (£)</span><input name="balance" inputmode="decimal" placeholder="0.00"></label>
       </div>
       <div class="group">
-        <div class="group-title">Feedback · last 30 days</div>
+        <div class="group-head"><div class="group-title">Payments</div><span class="mode" id="balance-mode">Simulated</span><button type="button" class="switch switch-small" id="balance-switch" aria-label="Simulate the balance"><i></i></button></div>
+        <label><span>Total balance (£)</span><input name="balance" inputmode="decimal" placeholder="0.00"></label>
+        <div class="hint hint-plain" id="balance-hint"></div>
+      </div>
+      <div class="group">
+        <div class="group-head"><div class="group-title">Feedback · last 30 days</div><span class="mode" id="feedback-mode">Simulated</span><button type="button" class="switch switch-small" id="feedback-switch" aria-label="Simulate feedback"><i></i></button></div>
         <div class="row4">
           <label><span>Average</span><input name="fbAvg" inputmode="decimal" placeholder="5"></label>
           <label><span>Negative</span><input name="fbNeg" inputmode="numeric" placeholder="0"></label>
           <label><span>Positive</span><input name="fbPos" inputmode="numeric" placeholder="0"></label>
           <label><span>Neutral</span><input name="fbNeu" inputmode="numeric" placeholder="0"></label>
         </div>
+        <div class="hint hint-plain" id="feedback-hint"></div>
       </div>
       <div class="group">
         <div class="group-title" id="periods-title">Total sales per period (£) · optional</div>

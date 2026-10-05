@@ -46,8 +46,13 @@ to the Home Screen for a full-screen version with the real status bar.
   generated from your recent level and trend with weekday and seasonal patterns, plus events:
   stock-outs (several days near zero, then a catch-up), supply hiccups, cash-flow squeezes,
   promotions and one-day dips. Today's figure grows through the day. Days that have passed are frozen
-  into the backlog; the balance accrues net sales with a fortnightly payout and feedback counts tick up
-  with orders.
+  into the backlog.
+- The **balance** follows sales: each day's sales after fees (about 72%) are held until delivery
+  (1–3 days) + 7 days, and whatever has unlocked is paid out daily, so the balance is the money still
+  held from roughly the last 8–10 days. **Feedback** follows orders: a drifting share of about 0.75%
+  leaves feedback a few days after ordering (mostly positive), counted over a rolling 30 days, and the
+  average is worked out from those ratings. Each has a Simulated / Manual switch in the entry sheet;
+  on Manual the card shows exactly what you typed.
 - Days you don't enter are simulated. A figure entered for today is the total by the time you enter it:
   the entry time is stored, and the rest of the day keeps simulating on top of it (sales, orders, the
   hourly chart and the balance keep growing). The forecast for the remaining hours is pulled towards
