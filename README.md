@@ -28,7 +28,9 @@ to the Home Screen for a full-screen version with the real status bar.
   ramp, evening peak, weekday/weekend and seasonal differences) plus seeded noise, so the shape is
   irregular but stable: re-entering a total only rescales that period, it never reshuffles the bars.
 - Dates, axis labels and comparison labels ("yesterday", "last 7D", "last week", "last 30D", previous
-  month name, previous year) are computed from the current date and time.
+  month name, previous year) are computed from the current date and time. Week, Month and Year are
+  compared like for like: the period so far against the prior week up to the same weekday, the prior
+  month up to the same day number and the prior year up to the same date.
 
 ## Daily backlog and simulation
 

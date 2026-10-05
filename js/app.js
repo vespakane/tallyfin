@@ -458,13 +458,13 @@
       };
     }
     if (id === "week") {
-      const dow = isoDow(today), ws = L - dow;
+      const dow = isoDow(today), ws = L - dow, pe = ws - 7 + dow;   // compared with last week up to the same weekday
       const bars = []; for (let k = 0; k < 7; k++) bars.push(k <= dow ? m.sales[ws + k] : null);
       return {
         slots: 7, bars, rotated: true,
         ticks: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((l, k) => ({ i: k, label: l })),
         sales: sum(m.sales, ws, L), units: sum(m.units, ws, L), orders: sum(m.orders, ws, L),
-        prev: { sales: sum(m.sales, ws - 7, ws - 1), units: sum(m.units, ws - 7, ws - 1), orders: sum(m.orders, ws - 7, ws - 1) }, suffix: "last week"
+        prev: { sales: sum(m.sales, ws - 7, pe), units: sum(m.units, ws - 7, pe), orders: sum(m.orders, ws - 7, pe) }, suffix: "last week"
       };
     }
     if (id === "d30") {
@@ -482,13 +482,15 @@
       const ticks = []; for (let d = 1; d <= dim; d += 6) ticks.push({ i: d - 1, label: "" + d });
       const pm = new Date(m.y, today.getMonth() - 1, 1);
       const pmStart = ms - daysInMonth(pm.getFullYear(), pm.getMonth());
+      const pe = Math.min(pmStart + m.dom - 1, ms - 1);   // compared with last month up to the same day number
       return {
         slots: dim, bars, rotated: false, ticks, tip: (k) => (k + 1) + " " + MONTHS[today.getMonth()],
         sales: sum(m.sales, ms, L), units: sum(m.units, ms, L), orders: sum(m.orders, ms, L),
-        prev: { sales: sum(m.sales, pmStart, ms - 1), units: sum(m.units, pmStart, ms - 1), orders: sum(m.orders, pmStart, ms - 1) }, suffix: MONTHS[pm.getMonth()]
+        prev: { sales: sum(m.sales, pmStart, pe), units: sum(m.units, pmStart, pe), orders: sum(m.orders, pmStart, pe) }, suffix: MONTHS[pm.getMonth()]
       };
     }
     const ys = L - (m.doy - 1);
+    const pe = Math.min(daysBetween(m.dates[0], new Date(m.y - 1, today.getMonth(), today.getDate())), ys - 1);   // compared with last year up to the same date
     const bars = new Array(12).fill(null);
     for (let mo = 0; mo <= today.getMonth(); mo++) {
       let s = 0;
@@ -498,7 +500,7 @@
     return {
       slots: 12, bars, rotated: true, ticks: MONTHS.map((l, k) => ({ i: k, label: l })), tip: (k) => MONTHS[k],
       sales: sum(m.sales, ys, L), units: sum(m.units, ys, L), orders: sum(m.orders, ys, L),
-      prev: { sales: sum(m.sales, 0, ys - 1), units: sum(m.units, 0, ys - 1), orders: sum(m.orders, 0, ys - 1) }, suffix: "" + (m.y - 1)
+      prev: { sales: sum(m.sales, 0, pe), units: sum(m.units, 0, pe), orders: sum(m.orders, 0, pe) }, suffix: "" + (m.y - 1)
     };
   }
 
